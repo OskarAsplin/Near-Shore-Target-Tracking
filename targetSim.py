@@ -1,8 +1,10 @@
-from sys import stdin
 import numpy as np
 import math
 import random
 import matplotlib.pyplot as plt
+import trajectory_tools
+#import tracking
+
 
 # Global constants
 clut_h = 0.0001
@@ -15,7 +17,7 @@ x0_est = x0 + np.dot(np.linalg.cholesky(cov0),np.random.normal(size=[4,1]))
 v_max = 25
 
 # Time for simulation
-dt = 1
+dt = 2.5
 t_end = 300
 time = np.arange(1,t_end,dt)
 
@@ -54,42 +56,30 @@ z_gate = np.empty((2,0))
 
 # -----------------------------------------------
 
-def cart2pol(x, y):
-    rho = np.sqrt(x**2 + y**2)
-    phi = np.arctan2(y, x)
-    return(rho, phi)
-
-def pol2cart(rho, phi):
-    x = rho * np.cos(phi)
-    y = rho * np.sin(phi)
-    return(x, y)
-
-def randomize_direction(x):
-    rho, theta = cart2pol(x[1],x[3])
-    varTheta = 0.15
-    theta = theta -varTheta+random.random()*2*varTheta
-    x1,y1 = pol2cart(rho,theta)
-    return np.array([[x[0]], [x1], [x[2]], [y1]])
-
-# -----------------------------------------------
 random.seed(a=None)
 
-# Main loop
-for k in range(K):
-    # Dynamic model
+# Generate target trajectory - random turns, constant velocity
+traj_tools = trajectory_tools.TrajectoryChange()
+for k, t in enumerate(time):
     if k == 0:
         x_true[:,k] = x0.T
+    else:
+        x_true[:,k] = F.dot(x_true[:, k - 1])
+        x_true[:,k] = traj_tools.randomize_direction(x_true[:,k]).reshape(4)
+
+# Main loop
+for k, t in enumerate(time):
+    # Dynamic model
+    if k == 0:
         x_est_prior[:,k] = x0_est.T
         cov_prior[:,:,k] = cov0
     else:
-        x_true[:,k] = np.dot(F,x_true[:,k-1])
-        x_true[:,k] = randomize_direction(x_true[:,k]).reshape(4)
-        x_est_prior[:,k] = np.dot(F,x_est_posterior[:,k-1])
-        cov_prior[:,:,k] = np.dot(np.dot(F,cov_posterior[:,:,k-1]),F.T)+Q
+        x_est_prior[:,k] = F.dot(x_est_posterior[:,k-1])
+        cov_prior[:,:,k] = F.dot(cov_posterior[:,:,k-1]).dot(F.T)+Q
     
     # Generate measurement for real target
     noise = np.dot(np.linalg.cholesky(R),np.random.normal(size=[2,1]))
-    z_true[:,k] = np.dot(H,x_true[:,k])+noise.T
+    z_true[:,k] = H.dot(x_true[:,k])+noise.T
     
     # Add clutter measurements and signal strength
     lambda1 = clut_l + (clut_h - clut_l)*random.random()   # Clutter density
@@ -107,16 +97,15 @@ for k in range(K):
             z_strength = np.append(z_strength, [z_all[0:2,i]], axis=0)
 
     # Find measurements within validation region
-    S = np.dot(np.dot(H,cov_prior[:,:,k]),H.T)+R           # Covariance of the innovation
-    W = np.dot(cov_prior[:,:,k],H.T)             # Gain
-    W = np.dot(W,np.linalg.inv(S))
+    S = H.dot(cov_prior[:,:,k]).dot(H.T)+R           # Covariance of the innovation
+    W = cov_prior[:,:,k].dot(H.T)             # Gain
+    W = W.dot(np.linalg.inv(S))
     m_k = 0
     beta_i = np.array([0])
     v_i = np.array([[0], [0]])
     for i in range(len(z_strength[:,0])):
         v_ik = z_strength[i] - np.dot(H,x_est_prior[:,k])       # Measurement innovation
-        #NIS_temp = np.dot(v_ik.T,np.linalg.inv(S)).dot(v_ik)
-        NIS_temp = np.dot(np.dot(v_ik.T, np.linalg.inv(S)),v_ik)
+        NIS_temp = v_ik.T.dot(np.linalg.inv(S)).dot(v_ik)
         if NIS_temp < gamma_g:                           # Within validation region
             z_gate = np.append(z_gate, [[z_strength[i,0]], [z_strength[i,1]]], axis=1)
             v_i = np.append(v_i, [[v_ik[0]], [v_ik[1]]], axis=1)
@@ -128,30 +117,30 @@ for k in range(K):
         beta_i = beta_i/np.sum(beta_i)                  # Normalize
     
     if m_k != 0:
-        v_k = np.array([[np.dot(v_i[0,1:], beta_i[1:])],
-            [np.dot(v_i[1,1:], beta_i[1:])]])
+        v_k = np.array([[v_i[0,1:].dot(beta_i[1:])],
+            [v_i[1,1:].dot(beta_i[1:])]])
     else:
         v_k = np.array([[0], [0]])
     
     # Covariance of correct measurement and SOI
-    P_c = cov_prior[:,:,k]-np.dot(np.dot(W,S),W.T)
+    P_c = cov_prior[:,:,k] - W.dot(S).dot(W.T)
     part_result = 0
     for i in range(1,len(beta_i)):
         temp = v_i[:,i][np.newaxis]
         part_result = part_result + beta_i[i]*(temp.T*temp)
-    part_result -= np.dot(v_k,v_k.T)
-    SOI = np.dot(np.dot(W,part_result),W.T)
+    part_result -= v_k.dot(v_k.T)
+    SOI = W.dot(part_result).dot(W.T)
 
-    temp = np.transpose([x_est_prior[:,k]])+np.dot(W,v_k)
+    temp = np.transpose([x_est_prior[:,k]])+W.dot(v_k)
     x_est_posterior[:,k] = temp.reshape(4)
     cov_posterior[:,:,k] = beta_i[0]*cov_prior[:,:,k]+(1-beta_i[0])*P_c+SOI
 
 # -----------------------------------------------
 
-plt.plot(x_true[2,:], x_true[0,:],'r', label='True')
-plt.plot(z_true[1,:], z_true[0,:], 'o', fillstyle='none', markeredgecolor='xkcd:wheat', label='data1')
-plt.plot(z_gate[1,:], z_gate[0,:], 'kx', label='data within gate')
-plt.plot(x_est_posterior[2,:], x_est_posterior[0,:], 'b--', label='Posterior', linewidth=2)
+plt.plot(x_true[2,:], x_true[0,:],'r', label='True trajectory')
+plt.plot(z_true[1,:], z_true[0,:], 'o', fillstyle='none', markeredgecolor='xkcd:wheat', label='Data from target')
+plt.plot(z_gate[1,:], z_gate[0,:], 'kx', label='Data within gate')
+plt.plot(x_est_posterior[2,:], x_est_posterior[0,:], 'b--', label='Posterior estimation', linewidth=2)
 
 plt.xlabel('East[m]')
 plt.ylabel('North[m]')
