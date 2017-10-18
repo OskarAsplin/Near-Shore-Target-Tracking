@@ -3,11 +3,12 @@ import matplotlib.pyplot as plt
 import trajectory_tools
 import tracking
 import simulation
+import visualization
 
 
 # Global constants
-clutter_density = 0.0001
-radar_range = 1500
+clutter_density = 1e-5
+radar_range = 1000
 
 # Initialized target
 x0 = np.array([[-300], [4], [-200], [5]])
@@ -17,7 +18,7 @@ v_max = 50
 
 # Time for simulation
 dt = 1
-t_end = 400
+t_end = 200
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -51,30 +52,46 @@ track_manager = tracking.Manager(PDAF_tracker)
 # Generate target trajectory - random turns, constant velocity
 traj_tools = trajectory_tools.TrajectoryChange()
 for k, t in enumerate(time):
-     if k == 0:
-         x_true[:, k] = x0.T
-     else:
-         x_true[:, k] = F.dot(x_true[:, k - 1])
-         x_true[:, k] = traj_tools.randomize_direction(x_true[:, k]).reshape(4)
+    if k == 0:
+        x_true[:, k] = x0.T
+    else:
+        x_true[:, k] = F.dot(x_true[:, k - 1])
+        x_true[:, k] = traj_tools.randomize_direction(x_true[:, k]).reshape(4)
+
+first_est = tracking.Estimate(0, np.array([-300, 4, -200, 5]), np.diag([10, 0.5, 10, 0.5]), is_posterior=True, track_index=0)
+track_manager.add_new_tracks([[first_est]])
 
 # Run tracking
 measurements_all = []
 for k, timestamp in enumerate(time):
-     measurements = radar.generate_measurements([H.dot(x_true[:, k])], timestamp)
-     measurements_all.append(measurements)
-     track_manager.step(measurements)
+    measurements = radar.generate_measurements([H.dot(x_true[:, k])], timestamp)
+    measurements_all.append(measurements)
+    track_manager.step(measurements)
 
 x_est_posterior = track_manager.ret_posterior()
 z_gate = track_manager.ret_measurements()
 
-# Plot
-plt.plot(x_true[2, :], x_true[0, :], 'r', label='True trajectory')
-plt.plot(z_gate[1, :], z_gate[0, :], 'kx', label='Data within gate')
-plt.plot(x_est_posterior[2, :], x_est_posterior[0, :], 'b--', label='Posterior estimation', linewidth=2)
+# # Plot
+# plt.plot(x_true[2, :], x_true[0, :], 'r', label='True trajectory')
+# # plt.plot(z_gate[1, :], z_gate[0, :], 'kx', label='Data within gate')
+# plt.plot(x_est_posterior[2, :], x_est_posterior[0, :], 'b--', label='Posterior estimation', linewidth=2)
+#
+# plt.xlabel('East[m]')
+# plt.ylabel('North[m]')
+# plt.title('Track position with sample rate: 1/s')
+# plt.legend()
+#
+# plt.show()
 
-plt.xlabel('East[m]')
-plt.ylabel('North[m]')
-plt.title('Track position with sample rate: 1/s')
-plt.legend()
+fig, ax = visualization.plot_measurements(measurements_all)
+ax.plot(x_true[2, :], x_true[0, :], 'k', label='True trajectory')
+ax.plot(x_true[2, 0], x_true[0, 0], 'ko')
+visualization.plot_track_pos(track_manager.track_file, ax, 'r')
+ax.set_xlim(-radar_range, radar_range)
+ax.set_ylim(-radar_range, radar_range)
+ax.set_xlabel('East[m]')
+ax.set_ylabel('North[m]')
+ax.set_title('Track position with sample rate: 1/s')
+ax.legend()
 
 plt.show()

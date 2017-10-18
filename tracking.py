@@ -59,22 +59,6 @@ class Estimate(object):
         self.measurements.append(measurement)
 
 
-def KF_step(estimate, measurement):
-    H = measurement.measurement_mapping
-    R = measurement.covariance
-    estimate.S = H.dot(estimate.cov_prior).dot(H.T)+R
-    z = measurement.value
-    estimate.z_hat = H.dot(estimate.est_prior)
-    kalman_gain = estimate.cov_prior.dot(H.T).dot(np.linalg.inv(estimate.S))
-    estimate.est_posterior = estimate.est_prior+np.dot(kalman_gain, z-estimate.z_hat)
-    estimate.cov_posterior = estimate.cov_prior-np.dot(kalman_gain, np.dot(estimate.S, kalman_gain.T))
-
-
-def trivial_step(estimate):
-    estimate.est_posterior = estimate.est_prior
-    estimate.cov_posterior = estimate.cov_prior
-
-
 class DWNAModel(object):
     def __init__(self, q):
         self.q = q
@@ -122,8 +106,8 @@ class TrackGate(object):
             R = measurement.covariance
             estimate.z_hat = H.dot(estimate.est_prior)
             estimate.S = H.dot(estimate.cov_prior).dot(H.T)+R
-            nu = z - estimate.z_hat
-            if nu.T.dot(np.linalg.inv(estimate.S)).dot(nu) < self.gamma:
+            v_ik = z - estimate.z_hat
+            if v_ik.T.dot(np.linalg.inv(estimate.S)).dot(v_ik) < self.gamma:
                 estimate.store_measurement(measurement)
                 measurements_used.add(z_idx)
         return measurements_used
@@ -152,11 +136,15 @@ class PDAFTracker(object):
         self.target_model = target_model
         self.gate_method = gate_method
 
-    def step(self, latest_est, measurements, timestamp):
-        estimate = self.target_model.step(latest_est, timestamp)
-        self.gate_method.gate_estimate(estimate, measurements)
-        self.update_estimate(estimate)
-        return estimate
+    def step(self, old_estimates, measurements, timestamp):
+        estimates = [self.target_model.step(old_est, timestamp) for old_est in old_estimates]
+        used_measurements = set()
+        for estimate in estimates:
+            new_used_measurements = self.gate_method.gate_estimate(estimate, measurements)
+            used_measurements = used_measurements | new_used_measurements
+            self.update_estimate(estimate)
+        unused_measurements = [measurement for idx, measurement in enumerate(measurements) if idx not in used_measurements]
+        return estimates, unused_measurements
 
     def update_estimate(self, estimate):
         n_measurements = len(estimate.measurements)
@@ -168,7 +156,7 @@ class PDAFTracker(object):
             return
         H = estimate.measurements[0].measurement_mapping
         z_all = np.array([measurement.value for measurement in estimate.measurements]).T
-        b = 2/self.gate_method.gamma*(1-self.detection_probability*self.gate_method.gate_probability)/self.detection_probability*n_measurements
+        b = 2/self.gate_method.gamma*(1-P_D*P_G)/P_D*n_measurements
         e = np.zeros(n_measurements)
         innovations = np.zeros_like(z_all)
         for i in range(n_measurements):
@@ -197,17 +185,31 @@ class Manager(object):
         self.tracking_method = tracking_method
         self.logger = logger
         self.est_posterior = np.empty((4, 0))
-        self.latest_est = Estimate(0, np.array([-300, 4, -200, 5]), np.diag([10, 0.5, 10, 0.5]), is_posterior=True, track_index=0)
         self.measurements_used = np.empty((2, 0))
+        self.track_file = dict()
+        self.active_tracks = set()
 
     def step(self, measurements):
         # Step active tracks
         timestamp = measurements[0].timestamp
-        estimate = self.tracking_method.step(self.latest_est, measurements, timestamp)
-        self.latest_est = estimate
-        self.est_posterior = np.append(self.est_posterior, [[estimate.est_posterior[0]], [estimate.est_posterior[1]], [estimate.est_posterior[2]], [estimate.est_posterior[3]]], axis=1)
+        latest_estimates = [self.track_file[idx][-1] for idx in self.active_tracks]
+        estimates, unused_measurements = self.tracking_method.step(latest_estimates, measurements, timestamp)
+        self.update_track_file(estimates)
+        self.latest_est = estimates[0]
+        self.est_posterior = np.append(self.est_posterior, [[self.latest_est.est_posterior[0]], [self.latest_est.est_posterior[1]], [self.latest_est.est_posterior[2]], [self.latest_est.est_posterior[3]]], axis=1)
         if any(self.latest_est.measurements):
             self.measurements_used = np.append(self.measurements_used, np.array([measurement.value for measurement in self.latest_est.measurements]).T, axis=1)
+
+    def update_track_file(self, estimates):
+        [self.track_file[est.track_index].append(est) for est in estimates]
+
+    def add_new_tracks(self, new_estimates):
+        # Assumes that new_estimates = [[est_11, est_12, ...], [est_21, est_22, ...], ...]
+        # which means that the initiation method outputs a historic estimate list
+        for estimates in new_estimates:
+            t_idx = estimates[0].track_index
+            self.track_file[t_idx] = estimates
+            self.active_tracks.add(t_idx)
 
     def ret_posterior(self):
         return self.est_posterior
