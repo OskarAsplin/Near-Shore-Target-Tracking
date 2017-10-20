@@ -184,7 +184,6 @@ class Manager(object):
     def __init__(self, tracking_method, logger=DefaultLogger()):
         self.tracking_method = tracking_method
         self.logger = logger
-        self.est_posterior = np.empty((4, 0))
         self.measurements_used = np.empty((2, 0))
         self.track_file = dict()
         self.active_tracks = set()
@@ -196,7 +195,6 @@ class Manager(object):
         estimates, unused_measurements = self.tracking_method.step(latest_estimates, measurements, timestamp)
         self.update_track_file(estimates)
         self.latest_est = estimates[0]
-        self.est_posterior = np.append(self.est_posterior, [[self.latest_est.est_posterior[0]], [self.latest_est.est_posterior[1]], [self.latest_est.est_posterior[2]], [self.latest_est.est_posterior[3]]], axis=1)
         if any(self.latest_est.measurements):
             self.measurements_used = np.append(self.measurements_used, np.array([measurement.value for measurement in self.latest_est.measurements]).T, axis=1)
 
@@ -210,9 +208,6 @@ class Manager(object):
             t_idx = estimates[0].track_index
             self.track_file[t_idx] = estimates
             self.active_tracks.add(t_idx)
-
-    def ret_posterior(self):
-        return self.est_posterior
 
     def ret_measurements(self):
         return self.measurements_used
