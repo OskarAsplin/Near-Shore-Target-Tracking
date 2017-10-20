@@ -4,6 +4,7 @@ import trajectory_tools
 import tracking
 import simulation
 import visualization
+import track_initiation
 
 
 # Global constants
@@ -14,11 +15,10 @@ radar_range = 1000
 x0_1 = np.array([100, 4, 0, 5])
 x0_2 = np.array([-100, -4, 0, -5])
 cov0 = np.diag([10, 0.5, 10, 0.5])
-v_max = 50
 
 # Time for simulation
 dt = 1
-t_end = 100
+t_end = 150
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -40,11 +40,19 @@ x_true = np.zeros((2, 4, K))
 # -----------------------------------------------
 
 # Set up tracking system
+v_max = 10/dt
 radar = simulation.SquareRadar(radar_range, clutter_density, P_D, R)
 gate = tracking.TrackGate(P_G, v_max)
 target_model = tracking.DWNAModel(q)
 PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
-track_manager = tracking.Manager(PDAF_tracker)
+N_test = 6
+M_req = 4
+N_terminate = 4
+M_of_N = track_initiation.MOfNInitiation(M_req, N_test, PDAF_tracker, gate)
+track_termination = tracking.TrackTerminator(N_terminate)
+track_manager = tracking.Manager(PDAF_tracker, M_of_N, track_termination)
+
+# track_manager = tracking.Manager(PDAF_tracker)
 
 # Generate target trajectory - random turns, constant velocity
 traj_tools = trajectory_tools.TrajectoryChange()
@@ -61,7 +69,7 @@ for k, t in enumerate(time):
 # Initialize tracks
 first_est_1 = tracking.Estimate(0, x0_1, cov0, is_posterior=True, track_index=0)
 first_est_2 = tracking.Estimate(0, x0_2, cov0, is_posterior=True, track_index=1)
-track_manager.add_new_tracks([[first_est_1], [first_est_2]])
+# track_manager.add_new_tracks([[first_est_1], [first_est_2]])
 
 # Run tracking
 measurements_all = []

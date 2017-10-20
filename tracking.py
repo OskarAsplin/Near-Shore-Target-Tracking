@@ -180,9 +180,31 @@ class PDAFTracker(object):
         estimate.cov_posterior = betas[-1]*estimate.cov_prior+(1-betas[-1])*P_c+soi
 
 
+class TrackTerminator(object):
+    def __init__(self, N_terminate):
+        self.steps_wo_measurements = dict()
+        self.N_terminate = N_terminate
+
+    def step(self, estimates):
+        term_idx = []
+        for estimate in estimates:
+            t_idx = estimate.track_index
+            if t_idx not in self.steps_wo_measurements.keys():
+                self.steps_wo_measurements[t_idx] = 0
+            if len(estimate.measurements) > 0:
+                self.steps_wo_measurements[t_idx] = 0
+            else:
+                self.steps_wo_measurements[t_idx] += 1
+            if self.steps_wo_measurements[t_idx] > self.N_terminate:
+                term_idx.append(t_idx)
+        return term_idx
+
+
 class Manager(object):
-    def __init__(self, tracking_method, logger=DefaultLogger()):
+    def __init__(self, tracking_method, initiation_method, termination_method, logger=DefaultLogger()):
         self.tracking_method = tracking_method
+        self.initiation_method = initiation_method
+        self.termination_method = termination_method
         self.logger = logger
         self.measurements_used = np.empty((2, 0))
         self.track_file = dict()
@@ -194,9 +216,18 @@ class Manager(object):
         latest_estimates = [self.track_file[idx][-1] for idx in self.active_tracks]
         estimates, unused_measurements = self.tracking_method.step(latest_estimates, measurements, timestamp)
         self.update_track_file(estimates)
-        self.latest_est = estimates[0]
-        if any(self.latest_est.measurements):
-            self.measurements_used = np.append(self.measurements_used, np.array([measurement.value for measurement in self.latest_est.measurements]).T, axis=1)
+        # if any(estimates[0].measurements):
+        #     self.measurements_used = np.append(self.measurements_used, np.array([measurement.value for measurement in estimates[0].measurements]).T, axis=1)
+        # Use unused measurements in initiation
+        new_estimates = self.initiation_method.step(unused_measurements, timestamp)
+        self.add_new_tracks(new_estimates)
+        current_estimates = estimates + [est_list[-1] for est_list in new_estimates]
+        # Check for termination - usually no measurements
+        dead_tracks = self.termination_method.step(current_estimates)
+        self.terminate_tracks(dead_tracks)
+
+    def terminate_tracks(self, indices):
+        [self.active_tracks.discard(idx) for idx in indices]
 
     def update_track_file(self, estimates):
         [self.track_file[est.track_index].append(est) for est in estimates]
