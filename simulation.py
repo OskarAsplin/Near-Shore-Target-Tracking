@@ -47,12 +47,14 @@ class Radar(object):
     def add_clutter_map(self, clutter_map):
         self.clutter_map = clutter_map
 
+
 class SquareRadar(Radar):
     def inside_range(self, measurement):
         return np.linalg.norm(measurement, np.inf) < self.radar_range
 
     def calculate_area(self, radar_range):
         return np.pi*radar_range**2
+
 
 class CircularRadar(Radar):
     def inside_range(self, measurement):

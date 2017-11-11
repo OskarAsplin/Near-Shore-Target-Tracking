@@ -2,12 +2,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap
 
+
 def setup_plot(ax):
     if ax == None:
         fig, ax = plt.subplots()
     else:
         fig = ax.get_figure()
     return fig, ax
+
+
 def plot_measurements(measurements_all, ax=None, cmap=get_cmap('Blues')):
     fig, ax = setup_plot(ax)
     time = np.array([measurements[0].timestamp for measurements in measurements_all])
@@ -16,6 +19,7 @@ def plot_measurements(measurements_all, ax=None, cmap=get_cmap('Blues')):
         color = cmap(interval[index])
         [ax.plot(z.value[1], z.value[0], 'o', color=color) for z in measurements_all[index]]
     return fig, ax
+
 
 def plot_track_pos(track_file, ax=None, color='k', add_index=False):
     fig, ax = setup_plot(ax)

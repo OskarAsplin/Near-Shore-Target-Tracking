@@ -2,6 +2,7 @@ import numpy as np
 from scipy.linalg import block_diag
 import tracking
 
+
 class MOfNInitiation(object):
     def __init__(self, M_required, N_test, tracking_method, track_gate):
         self.M_required = M_required
