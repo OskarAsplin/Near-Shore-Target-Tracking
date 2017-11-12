@@ -42,17 +42,28 @@ x_true = np.zeros((2, 4, K))
 # Set up tracking system
 v_max = 10/dt
 radar = simulation.SquareRadar(radar_range, clutter_density, P_D, R)
+scan_area = radar.calculate_area(radar_range)
 gate = tracking.TrackGate(P_G, v_max)
-target_model = tracking.DWNAModel(q)
-PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
-N_test = 6
-M_req = 4
-N_terminate = 4
-M_of_N = track_initiation.MOfNInitiation(M_req, N_test, PDAF_tracker, gate)
-track_termination = tracking.TrackTerminator(N_terminate)
-track_manager = tracking.Manager(PDAF_tracker, M_of_N, track_termination)
+p11 = 0.98          # Survival probability
+p21 = 0             # Probability of birth
+P_Markov = np.array([[p11, 1 - p11], [p21, 1 - p21]])
+target_model = tracking.DWNAModel(q, P_Markov)
+IPDAF_tracker = tracking.IPDAFTracker(P_D, target_model, gate, P_Markov, scan_area)
+# N_test = 6
+# M_req = 4
+# N_terminate = 4
+# M_of_N = track_initiation.MOfNInitiation(M_req, N_test, IPDAF_tracker, gate)
+# track_termination = tracking.TrackTerminator(N_terminate)
+# track_manager = tracking.Manager(IPDAF_tracker, M_of_N, track_termination)
 
 # track_manager = tracking.Manager(PDAF_tracker)
+
+initiate_prob = 0.98
+terminate_prob = 0.20
+N_terminate = 4
+IPDAInitiation = track_initiation.IPDAInitiation(initiate_prob, terminate_prob, IPDAF_tracker, gate)
+track_termination = tracking.TrackTerminator(N_terminate)
+track_manager = tracking.Manager(IPDAF_tracker, IPDAInitiation, track_termination)
 
 # Generate target trajectory - random turns, constant velocity
 traj_tools = trajectory_tools.TrajectoryChange()
@@ -67,8 +78,8 @@ for k, t in enumerate(time):
         x_true[1, :, k] = traj_tools.randomize_direction(x_true[1, :, k]).reshape(4)
 
 # Initialize tracks
-first_est_1 = tracking.Estimate(0, x0_1, cov0, is_posterior=True, track_index=0)
-first_est_2 = tracking.Estimate(0, x0_2, cov0, is_posterior=True, track_index=1)
+#first_est_1 = tracking.Estimate(0, x0_1, cov0, is_posterior=True, track_index=0)
+#first_est_2 = tracking.Estimate(0, x0_2, cov0, is_posterior=True, track_index=1)
 # track_manager.add_new_tracks([[first_est_1], [first_est_2]])
 
 # Run tracking

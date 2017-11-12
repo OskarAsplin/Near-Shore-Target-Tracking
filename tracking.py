@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.stats import chi2
+from scipy.stats import chi2, multivariate_normal
 
 
 class DefaultLogger(object):
@@ -37,14 +37,16 @@ class Measurement(object):
 
 
 class Estimate(object):
-    def __init__(self, t, mean, covariance, is_posterior=False, track_index=None):
+    def __init__(self, t, mean, covariance, exist_prob, is_posterior=False, track_index=None):
         self.timestamp = t
         self.measurements = []
         self.est_prior = mean
         self.cov_prior = covariance
+        self.exist_prior = exist_prob
         if is_posterior:
             self.est_posterior = mean
             self.cov_posterior = covariance
+            self.exist_posterior = exist_prob
         if track_index is not None:
             self.track_index = track_index
         else:
@@ -60,8 +62,9 @@ class Estimate(object):
 
 
 class DWNAModel(object):
-    def __init__(self, q):
+    def __init__(self, q, P_markov = np.array([[1, 0], [0, 1]])):
         self.q = q
+        self.P_Markov = P_markov
         self.get_model = lambda t: self.model(t, self.q)
 
     def __repr__(self):
@@ -72,7 +75,9 @@ class DWNAModel(object):
         F, Q = self.model(dt, self.q)
         est_new = F.dot(estimate.est_posterior)
         cov_new = F.dot(estimate.cov_posterior).dot(F.T) + Q
-        new_estimate = Estimate(timestamp, est_new, cov_new, track_index=estimate.track_index)
+        exist_post = estimate.exist_posterior
+        estimate.exist_prior = self.P_Markov[0, 0] * exist_post + self.P_Markov[1, 0] * (1 - exist_post)
+        new_estimate = Estimate(timestamp, est_new, cov_new, exist_post, track_index=estimate.track_index)
         return new_estimate
 
     @staticmethod
@@ -178,6 +183,46 @@ class PDAFTracker(object):
         soi = np.dot(kalman_gain, np.dot(cov_terms, kalman_gain.T))
         P_c = estimate.cov_prior-np.dot(kalman_gain, np.dot(estimate.S, kalman_gain.T))
         estimate.cov_posterior = betas[-1]*estimate.cov_prior+(1-betas[-1])*P_c+soi
+
+
+class IPDAFTracker(PDAFTracker):
+    def __init__(self, P_D, target_model, gate_method, P_Markov, scan_area):
+        super(IPDAFTracker, self).__init__(P_D, target_model, gate_method)
+        #PDAFTracker.__init__(P_D, target_model, gate_method)
+        self.Markov_coefficients = P_Markov
+        self.area = scan_area
+
+    def step(self, old_estimates, measurements, timestamp):
+        estimates = [self.target_model.step(old_est, timestamp) for old_est in old_estimates]
+        used_measurements = set()
+        for estimate in estimates:
+            new_used_measurements = self.gate_method.gate_estimate(estimate, measurements)
+            used_measurements = used_measurements | new_used_measurements
+            self.update_estimate(estimate)
+            self.update_existence_probability(estimate)
+        unused_measurements = [measurement for idx, measurement in enumerate(measurements) if idx not in used_measurements]
+        return estimates, unused_measurements
+
+    def update_existence_probability(self, estimate):
+        #P_Markov = self.Markov_coefficients
+        #exist_pos = estimate.exist_posterior
+        n_measurements = len(estimate.measurements)
+        P_D = self.detection_probability
+        P_G = self.gate_method.gate_probability
+        V_k = self.area
+        sum_pdf = 0         # Find out what this is!!! is it v_k in PDAF? ergo total_innovation
+        z_all = np.array([measurement.value for measurement in estimate.measurements]).T
+        for i in range(n_measurements):
+            sum_pdf += multivariate_normal.pdf(z_all[:,i], mean=estimate.z_hat, cov=estimate.S)
+
+        #estimate.exist_prior = P_Markov[0, 0]*exist_pos + P_Markov[1, 0]*(1 - exist_pos)
+        if n_measurements == 0:
+            m_k_hat = 0
+            delta_k = P_D*P_G
+        else:
+            m_k_hat = n_measurements - P_D*P_G*estimate.exist_prior
+            delta_k = P_D*P_G - P_D*P_G*V_k/m_k_hat*sum_pdf
+        estimate.exist_posterior = (1-delta_k)/(1-delta_k*estimate.exist_prior)*estimate.exist_prior
 
 
 class TrackTerminator(object):
