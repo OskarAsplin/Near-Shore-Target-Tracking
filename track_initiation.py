@@ -89,10 +89,10 @@ class MOfNInitiation(Initiation):
 
 
 class IPDAInitiation(Initiation):
-    def __init__(self, initiate_prob, terminate_prob, tracking_method, track_gate):
+    def __init__(self, initiate_thresh, terminate_thresh, tracking_method, track_gate):
         super(IPDAInitiation, self).__init__(tracking_method, track_gate)
-        self.initiate_prob = initiate_prob
-        self.terminate_prob = terminate_prob
+        self.initiate_thresh = initiate_thresh
+        self.terminate_thresh = terminate_thresh
 
     def step(self, measurements, timestamp):
         preliminary_estimates = self.get_preliminary_estimates()
@@ -106,10 +106,10 @@ class IPDAInitiation(Initiation):
         confirmed_estimates = []
         for estimate in estimates:
             t_idx = estimate.track_index
-            if estimate.exist_posterior > self.initiate_prob:
+            if estimate.exist_posterior > self.initiate_thresh:
                 confirmed_estimates.append(self.preliminary_tracks[t_idx])
                 del self.track_status[t_idx]
-            elif estimate.exist_posterior < self.terminate_prob:
+            elif estimate.exist_posterior < self.terminate_thresh:
                 del self.track_status[t_idx]
                 del self.preliminary_tracks[t_idx]
         return confirmed_estimates

@@ -43,6 +43,7 @@ class Estimate(object):
         self.est_prior = mean
         self.cov_prior = covariance
         self.exist_prior = exist_prob
+        self.exist_posterior = exist_prob       # OBS, Quick fix for MofN
         if is_posterior:
             self.est_posterior = mean
             self.cov_posterior = covariance
@@ -186,11 +187,10 @@ class PDAFTracker(object):
 
 
 class IPDAFTracker(PDAFTracker):
-    def __init__(self, P_D, target_model, gate_method, P_Markov, scan_area):
+    def __init__(self, P_D, target_model, gate_method, P_Markov, gamma):
         super(IPDAFTracker, self).__init__(P_D, target_model, gate_method)
-        #PDAFTracker.__init__(P_D, target_model, gate_method)
         self.Markov_coefficients = P_Markov
-        self.area = scan_area
+        self.gamma = gamma # Flytt funksjonalitet til gate_estimate? legge til V_k i Estimate
 
     def step(self, old_estimates, measurements, timestamp):
         estimates = [self.target_model.step(old_est, timestamp) for old_est in old_estimates]
@@ -204,28 +204,23 @@ class IPDAFTracker(PDAFTracker):
         return estimates, unused_measurements
 
     def update_existence_probability(self, estimate):
-        #P_Markov = self.Markov_coefficients
-        #exist_pos = estimate.exist_posterior
         n_measurements = len(estimate.measurements)
         P_D = self.detection_probability
         P_G = self.gate_method.gate_probability
-        V_k = self.area
-        sum_pdf = 0         # Find out what this is!!! is it v_k in PDAF? ergo total_innovation
+        V_k = np.pi * np.sqrt(np.linalg.det(self.gamma * estimate.S))
+        sum_pdf = 0
         z_all = np.array([measurement.value for measurement in estimate.measurements]).T
         for i in range(n_measurements):
             sum_pdf += multivariate_normal.pdf(z_all[:,i], mean=estimate.z_hat, cov=estimate.S)
-
-        #estimate.exist_prior = P_Markov[0, 0]*exist_pos + P_Markov[1, 0]*(1 - exist_pos)
         if n_measurements == 0:
-            m_k_hat = 0
             delta_k = P_D*P_G
         else:
             m_k_hat = n_measurements - P_D*P_G*estimate.exist_prior
-            delta_k = P_D*P_G - P_D*P_G*V_k/m_k_hat*sum_pdf
+            delta_k = P_D*P_G - P_D*P_G*V_k / m_k_hat * sum_pdf
         estimate.exist_posterior = (1-delta_k)/(1-delta_k*estimate.exist_prior)*estimate.exist_prior
 
 
-class TrackTerminator(object):
+class TrackTerminatorMofN(object):
     def __init__(self, N_terminate):
         self.steps_wo_measurements = dict()
         self.N_terminate = N_terminate
@@ -241,6 +236,19 @@ class TrackTerminator(object):
             else:
                 self.steps_wo_measurements[t_idx] += 1
             if self.steps_wo_measurements[t_idx] > self.N_terminate:
+                term_idx.append(t_idx)
+        return term_idx
+
+
+class TrackTerminatorIPDA(object):
+    def __init__(self, terminate_thresh):
+        self.terminate_thresh = terminate_thresh
+
+    def step(self, estimates):
+        term_idx = []
+        for estimate in estimates:
+            t_idx = estimate.track_index
+            if estimate.exist_posterior <= self.terminate_thresh:
                 term_idx.append(t_idx)
         return term_idx
 
@@ -261,8 +269,6 @@ class Manager(object):
         latest_estimates = [self.track_file[idx][-1] for idx in self.active_tracks]
         estimates, unused_measurements = self.tracking_method.step(latest_estimates, measurements, timestamp)
         self.update_track_file(estimates)
-        # if any(estimates[0].measurements):
-        #     self.measurements_used = np.append(self.measurements_used, np.array([measurement.value for measurement in estimates[0].measurements]).T, axis=1)
         # Use unused measurements in initiation
         new_estimates = self.initiation_method.step(unused_measurements, timestamp)
         self.add_new_tracks(new_estimates)
