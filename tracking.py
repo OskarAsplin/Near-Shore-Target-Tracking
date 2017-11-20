@@ -63,9 +63,8 @@ class Estimate(object):
 
 
 class DWNAModel(object):
-    def __init__(self, q, P_markov = np.array([[1, 0], [0, 1]])):
+    def __init__(self, q):
         self.q = q
-        self.P_Markov = P_markov
         self.get_model = lambda t: self.model(t, self.q)
 
     def __repr__(self):
@@ -77,7 +76,6 @@ class DWNAModel(object):
         est_new = F.dot(estimate.est_posterior)
         cov_new = F.dot(estimate.cov_posterior).dot(F.T) + Q
         exist_post = estimate.exist_posterior
-        estimate.exist_prior = self.P_Markov[0, 0] * exist_post + self.P_Markov[1, 0] * (1 - exist_post)
         new_estimate = Estimate(timestamp, est_new, cov_new, exist_post, track_index=estimate.track_index)
         return new_estimate
 
@@ -189,8 +187,8 @@ class PDAFTracker(object):
 class IPDAFTracker(PDAFTracker):
     def __init__(self, P_D, target_model, gate_method, P_Markov, gamma):
         super(IPDAFTracker, self).__init__(P_D, target_model, gate_method)
-        self.Markov_coefficients = P_Markov
-        self.gamma = gamma # Flytt funksjonalitet til gate_estimate? legge til V_k i Estimate
+        self.P_Markov = P_Markov
+        self.gamma = gamma # Flytt funksjonalitet til gate_estimate? - legge til V_k i Estimate
 
     def step(self, old_estimates, measurements, timestamp):
         estimates = [self.target_model.step(old_est, timestamp) for old_est in old_estimates]
@@ -209,6 +207,7 @@ class IPDAFTracker(PDAFTracker):
         P_G = self.gate_method.gate_probability
         V_k = np.pi * np.sqrt(np.linalg.det(self.gamma * estimate.S))
         sum_pdf = 0
+        estimate.exist_prior = self.P_Markov[0, 0] * estimate.exist_prior + self.P_Markov[1, 0] * (1 - estimate.exist_prior)
         z_all = np.array([measurement.value for measurement in estimate.measurements]).T
         for i in range(n_measurements):
             sum_pdf += multivariate_normal.pdf(z_all[:,i], mean=estimate.z_hat, cov=estimate.S)
@@ -216,7 +215,7 @@ class IPDAFTracker(PDAFTracker):
             delta_k = P_D*P_G
         else:
             m_k_hat = n_measurements - P_D*P_G*estimate.exist_prior
-            delta_k = P_D*P_G - P_D*P_G*V_k / m_k_hat * sum_pdf
+            delta_k = P_D*P_G - P_D*V_k / m_k_hat * sum_pdf
         estimate.exist_posterior = (1-delta_k)/(1-delta_k*estimate.exist_prior)*estimate.exist_prior
 
 
