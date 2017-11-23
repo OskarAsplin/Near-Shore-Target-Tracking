@@ -9,18 +9,18 @@ import track_initiation
 
 
 # Global constants
-clutter_density = 1e-5
+clutter_density = 1e-4
 radar_range = 1000
 
 # Initialized target
-num_ships = 1
+num_ships = 2
 x0_1 = np.array([100, 4, 0, 5])
 x0_2 = np.array([-100, -4, 0, -5])
 x0 = [x0_1, x0_2]
 
 # Time for simulation
 dt = 1
-t_end = 500
+t_end = 30
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -36,7 +36,7 @@ F, Q = tracking.DWNAModel.model(dt, q)
 
 #PDA constants
 P_G = 0.99
-P_D = 0.9
+P_D = 0.5
 
 # -----------------------------------------------
 
@@ -45,7 +45,7 @@ P_D = 0.9
 p11 = 0.98          # Survival probability
 p21 = 0             # Probability of birth
 P_Markov = np.array([[p11, 1 - p11], [p21, 1 - p21]])
-initiate_thresh = 0.60
+initiate_thresh = 0.90
 terminate_thresh = 0.10
 # MofN
 N_test = 6
@@ -58,7 +58,7 @@ radar = simulation.SquareRadar(radar_range, clutter_density, P_D, R)
 gate = tracking.TrackGate(P_G, v_max)
 target_model = tracking.DWNAModel(q)
 
-initiation_type = 0   # 0: MofN     else: IPDA
+initiation_type = 1   # 0: MofN     else: IPDA
 if initiation_type == 0:
     PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
     M_of_N = track_initiation.MOfNInitiation(M_req, N_test, PDAF_tracker, gate)
@@ -80,107 +80,30 @@ for k, t in enumerate(time):
             x_true[ship, :, k] = F.dot(x_true[ship, :, k - 1])
             x_true[ship, :, k] = traj_tools.randomize_direction(x_true[ship, :, k]).reshape(4)
 
-# Run true detected tracks demo
-scans_MofN = dict()
-scans_IPDA = dict()
-num_runs = 50
-num_scans = K
-for method in range(2):
-    for run in range(num_runs):
-        # Run tracking
-        if method == 0:
-            PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
-            M_of_N = track_initiation.MOfNInitiation(M_req, N_test, PDAF_tracker, gate)
-            track_termination = tracking.TrackTerminatorMofN(N_terminate)
-            track_manager = tracking.Manager(PDAF_tracker, M_of_N, track_termination)
-        else:
-            IPDAF_tracker = tracking.IPDAFTracker(P_D, target_model, gate, P_Markov, gate.gamma)
-            IPDAInitiation = track_initiation.IPDAInitiation(initiate_thresh, terminate_thresh, IPDAF_tracker, gate)
-            track_termination = tracking.TrackTerminatorIPDA(terminate_thresh)
-            track_manager = tracking.Manager(IPDAF_tracker, IPDAInitiation, track_termination)
 
-        measurements_all = []
-        tracks_spotted = set()
-        for k, timestamp in enumerate(time):
-            measurements = radar.generate_measurements([H.dot(x_true[ship, :, k]) for ship in range(num_ships)], timestamp)
-            measurements_all.append(measurements)
-            track_manager.step(measurements)
-
-            # Check if true tracks have been detected
-            for track_id, state_list in track_manager.track_file.items():
-                states = np.array([est.est_posterior for est in state_list])
-                for ship in range(num_ships):
-                    if trajectory_tools.dist(x_true[ship, 2, k], x_true[ship, 0, k], states[-1, 2], states[-1, 0]) < 50:
-                        tracks_spotted.add(ship)
-                        break
-            if len(tracks_spotted) == num_ships:
-                num_scans = k
-                if method == 0:
-                    if k+1 in scans_MofN:
-                        scans_MofN[k + 1] += 1
-                    else:
-                        scans_MofN[k + 1] = 1
-                else:
-                    if k+1 in scans_IPDA:
-                        scans_IPDA[k + 1] += 1
-                    else:
-                        scans_IPDA[k + 1] = 1
-                break
-
-        # Print time for debugging purposes
-        if run % 50 == 0:
-            print(run)
-
-max_key = max(max(scans_MofN.keys()), max(scans_IPDA.keys()))
-
-for scans in [scans_MofN, scans_IPDA]:
-    for key in range(1, max_key + 1):
-        if key not in scans:
-            scans[key] = 0
-
-    last = 0
-    for key in sorted(scans.keys()):
-        last = last + scans[key]
-        scans[key] = last
-
-list_MofN = sorted(scans_MofN.items())
-list_IPDA = sorted(scans_IPDA.items())
-xMofN, yMofN = zip(*list_MofN)
-xIPDA, yIPDA = zip(*list_IPDA)
+# Run tracking
+measurements_all = []
+for k, timestamp in enumerate(time):
+    measurements = radar.generate_measurements([H.dot(x_true[ship, :, k]) for ship in range(num_ships)], timestamp)
+    # measurements = radar.generate_clutter_measurements(timestamp)
+    measurements_all.append(measurements)
+    track_manager.step(measurements)
+    if k % 10 == 0:
+        print(k)
 
 # Plot
-fig, ax = visualization.setup_plot(None)
-plt.plot(xMofN, yMofN, '--', label='M of N')
-plt.plot(xIPDA, yIPDA, label='IPDA')
-ax.set_title('True detected tracks out of 500')
-ax.set_xlabel('Scans needed')
-ax.set_ylabel('Detected tracks')
-ax.legend()
-for axis in [ax.xaxis, ax.yaxis]:
-    axis.set_major_locator(ticker.MaxNLocator(integer=True))
-plt.xlim([1, max_key])
-plt.show()
-
-# IPDA_det_file = open('true_det_IPDA.txt', 'w')
-# MofN_det_file = open('true_det_MofN.txt', 'w')
-# for item in scans_IPDA:
-#     IPDA_det_file.write("%s\n" % item)
-# for item in scans_MofN:
-#     MofN_det_file.write("%s\n" % item)
-
-
-# #fig, ax = visualization.plot_measurements(measurements_all)
+fig, ax = visualization.plot_measurements(measurements_all)
 # fig, ax = visualization.setup_plot(None)
-# for ship in range(num_ships):
-#     ax.plot(x_true[ship, 2, 0:num_scans], x_true[ship, 0, 0:num_scans], 'k', label='True trajectory '+str(ship+1))
-#     #ax.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
-#     ax.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
-# visualization.plot_track_pos(track_manager.track_file, ax, 'r')
-# ax.set_xlim(-radar_range, radar_range)
-# ax.set_ylim(-radar_range, radar_range)
-# ax.set_xlabel('East[m]')
-# ax.set_ylabel('North[m]')
-# ax.set_title('Track position with sample rate: 1/s')
-# ax.legend()
-#
-# plt.show()
+for ship in range(num_ships):
+    # ax.plot(x_true[ship, 2, 0:100], x_true[ship, 0, 0:100], 'k', label='True trajectory '+str(ship+1))
+    ax.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
+    ax.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
+visualization.plot_track_pos(track_manager.track_file, ax, 'r')
+ax.set_xlim(-radar_range, radar_range)
+ax.set_ylim(-radar_range, radar_range)
+ax.set_xlabel('East[m]')
+ax.set_ylabel('North[m]')
+ax.set_title('Track position with sample rate: 1/s')
+ax.legend()
+
+plt.show()

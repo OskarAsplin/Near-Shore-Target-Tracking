@@ -261,6 +261,7 @@ class Manager(object):
         self.measurements_used = np.empty((2, 0))
         self.track_file = dict()
         self.active_tracks = set()
+        self.conf_tracks_total = 0
 
     def step(self, measurements):
         # Step active tracks
@@ -289,6 +290,7 @@ class Manager(object):
             t_idx = estimates[0].track_index
             self.track_file[t_idx] = estimates
             self.active_tracks.add(t_idx)
+            self.conf_tracks_total += 1
 
     def ret_measurements(self):
         return self.measurements_used
