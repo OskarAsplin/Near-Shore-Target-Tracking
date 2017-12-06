@@ -20,7 +20,7 @@ x0 = [x0_1, x0_2]
 
 # Time for simulation
 dt = 1
-t_end = 200
+t_end = 500
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -62,13 +62,12 @@ target_model = tracking.DWNAModel(q)
 # Run true detected tracks demo
 clutter_MofN = dict()
 clutter_IPDA = dict()
-num_runs = 8
 num_scans = K
 clut_arr = [4e-5, 3.5e-5, 3e-5, 2.5e-5, 2e-5, 1.5e-5, 1e-5, 5e-6]
 for method in range(2):
     clut_it = -1
     clutter_density = clut_arr[clut_it]
-    for run in range(num_runs):
+    for run in range(len(clut_arr)):
         # Run tracking
         if method == 0:
             PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
@@ -101,12 +100,14 @@ list_MofN = sorted(clutter_MofN.items())
 list_IPDA = sorted(clutter_IPDA.items())
 xMofN, yMofN = zip(*list_MofN)
 xIPDA, yIPDA = zip(*list_IPDA)
+print("Densities: ", xIPDA)
+print("False tracks: ", yIPDA)
 
 # Plot
 fig, ax = visualization.setup_plot(None)
 plt.plot(xMofN, yMofN, '--', label='M of N')
 plt.plot(xIPDA, yIPDA, label='IPDA')
-ax.set_title('False tracks detected over 200 scans')
+ax.set_title('False tracks detected over 500 scans')
 ax.set_xlabel('Clutter density')
 ax.set_ylabel('False tracks detected')
 plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))

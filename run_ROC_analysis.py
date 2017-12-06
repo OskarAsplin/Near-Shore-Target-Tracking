@@ -9,7 +9,7 @@ import track_initiation
 
 
 # Global constants
-clutter_density = 1e-5
+clutter_density = 2e-5
 radar_range = 1000
 
 # Initialized target
@@ -20,7 +20,7 @@ x0 = [x0_1, x0_2]
 
 # Time for simulation
 dt = 1
-t_end = 30
+t_end = 10
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -69,53 +69,106 @@ for k, t in enumerate(time):
             x_true[ship, :, k] = traj_tools.randomize_direction(x_true[ship, :, k]).reshape(4)
 
 # Run true detected tracks demo
-errors_IPDA = dict()
-num_runs = 200
-num_scans = K
-for run in range(num_runs):
-    # Run tracking
-    IPDAF_tracker = tracking.IPDAFTracker(P_D, target_model, gate, P_Markov, gate.gamma)
-    IPDAInitiation = track_initiation.IPDAInitiation(initiate_thresh, terminate_thresh, IPDAF_tracker, gate)
-    track_termination = tracking.TrackTerminatorIPDA(terminate_thresh)
-    track_manager = tracking.Manager(IPDAF_tracker, IPDAInitiation, track_termination)
+true_IPDA = dict()
+false_IPDA = dict()
+true_MofN = dict()
+false_MofN = dict()
 
-    for k, timestamp in enumerate(time):
-        measurements = radar.generate_measurements([H.dot(x_true[ship, :, k]) for ship in range(num_ships)], timestamp)
-        track_manager.step(measurements)
+num_runs = 2000
+c1 = 25
+c2 = 50
+true_IPDA_arr = []
+false_IPDA_arr = []
+true_MofN_arr = []
+false_MofN_arr = []
+init_values = [0.995, 0.98, 0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.51]
+M_values = [8, 7, 6, 6, 5, 4, 4, 3, 3]
+N_values = [8, 7, 6, 7, 6, 5, 6, 5, 6]
+num_IPDA_tests = len(init_values)
+num_MofN_tests = len(M_values)
+for method in range(2):
+    init_it = -1
+    for para_test in range(num_IPDA_tests if method == 0 else num_MofN_tests):
+        init_it += 1
+        if method == 0:
+            initiate_thresh = init_values[init_it]
+        else:
+            M_req = M_values[init_it]
+            N_test = N_values[init_it]
+        true_tracks = 0
+        false_tracks = 0
+        for run in range(num_runs):
+            # Run tracking
+            if method == 0:
+                IPDAF_tracker = tracking.IPDAFTracker(P_D, target_model, gate, P_Markov, gate.gamma)
+                IPDAInitiation = track_initiation.IPDAInitiation(initiate_thresh, terminate_thresh, IPDAF_tracker, gate)
+                track_termination = tracking.TrackTerminatorIPDA(terminate_thresh)
+                track_manager = tracking.Manager(IPDAF_tracker, IPDAInitiation, track_termination)
+            else:
+                PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
+                M_of_N = track_initiation.MOfNInitiation(M_req, N_test, PDAF_tracker, gate)
+                track_termination = tracking.TrackTerminatorMofN(N_terminate)
+                track_manager = tracking.Manager(PDAF_tracker, M_of_N, track_termination)
 
-        # Check if true tracks have been detected
-        for track_id, state_list in track_manager.track_file.items():
-            states = np.array([est.est_posterior for est in state_list])
-            for ship in range(num_ships):
-                dist = trajectory_tools.dist(x_true[ship, 2, k], x_true[ship, 0, k], states[-1, 2], states[-1, 0])
-                if dist < 20:
-                    if k+1 in errors_IPDA:
-                        errors_IPDA[k + 1].append(dist)
-                    else:
-                        errors_IPDA[k + 1] = [dist]
+            for k, timestamp in enumerate(time):
+                measurements = radar.generate_measurements([H.dot(x_true[ship, :, k]) for ship in range(num_ships)], timestamp)
+                track_manager.step(measurements)
 
-    # Print time for debugging purposes
-    if run % 50 == 0:
-        print(run)
+            # Check if true tracks have been detected
+            num_false = track_manager.conf_tracks_total
+            spotted = 0
+            for track_id, state_list in track_manager.track_file.items():
+                true_track = 1
+                for est in state_list:
+                    t = est.timestamp
+                    dist = trajectory_tools.dist(x_true[0, 2, t], x_true[0, 0, t], est.est_posterior[2], est.est_posterior[0])
+                    if dist > c2:
+                        true_track = 0
+                        break
+                if true_track == 1:
+                    num_false -= 1
+                    spotted = 1
+            false_tracks += min(num_false, 1)
+            true_tracks += spotted
 
-for scan in errors_IPDA:
-    errors_IPDA[scan] = sum(errors_IPDA[scan]) / len(errors_IPDA[scan])
+            # Print run number for debugging purposes
+            if run % 100 == 0:
+                print("%.1f" % (100 * (run+para_test*num_runs+method*num_IPDA_tests*num_runs) /
+                                ((num_IPDA_tests+num_MofN_tests) * num_runs)), "% done")
+        if method == 0:
+            true_IPDA[initiate_thresh] = true_tracks / num_runs
+            false_IPDA[initiate_thresh] = false_tracks / num_runs
+            true_IPDA_arr.append(true_IPDA[initiate_thresh])
+            false_IPDA_arr.append(false_IPDA[initiate_thresh])
+        else:
+            true_MofN[str(M_req)+" of "+str(N_test)] = true_tracks / num_runs
+            false_MofN[str(M_req)+" of "+str(N_test)] = false_tracks / num_runs
+            true_MofN_arr.append(true_MofN[str(M_req)+" of "+str(N_test)])
+            false_MofN_arr.append(false_MofN[str(M_req)+" of "+str(N_test)])
 
-maxValue = max(errors_IPDA.values())
-maxKey = max(errors_IPDA.keys())
+print("True IPDA: ", true_IPDA)
+print("False IPDA: ", false_IPDA)
+print("True MofN: ", true_MofN)
+print("False MofN: ", false_MofN)
+print("Arrays:")
+print("True IPDA: ", true_IPDA_arr)
+print("False IPDA: ", false_IPDA_arr)
+print("True MofN: ", true_MofN_arr)
+print("False MofN: ", false_MofN_arr)
 
-list_IPDA = sorted(errors_IPDA.items())
-xIPDA, yIPDA = zip(*list_IPDA)
+# list_IPDA = sorted(true_IPDA.items())
+# xIPDA, yIPDA = zip(*list_IPDA)
 
 # Plot
 fig, ax = visualization.setup_plot(None)
-plt.plot(xIPDA, yIPDA, label='IPDA')
-ax.set_title('RMSE of 10 000 runs of 30 scans')
-ax.set_xlabel('Scan number')
-ax.set_ylabel('Distance from real target [m]')
+plt.plot(false_IPDA_arr, true_IPDA_arr, label='IPDA')
+plt.plot(false_MofN_arr, true_MofN_arr, label='M of N')
+ax.set_title('ROC')
+ax.set_xlabel(r'$P_{FA}$')
+ax.set_ylabel(r'$P_D$')
 ax.legend()
-for axis in [ax.xaxis, ax.yaxis]:
-    axis.set_major_locator(ticker.MaxNLocator(integer=True))
-plt.ylim([0, maxValue])
-plt.xlim([1, maxKey])
+# for axis in [ax.xaxis, ax.yaxis]:
+#     axis.set_major_locator(ticker.MaxNLocator(integer=True))
+plt.ylim([0, 1])
+plt.xlim([0, 1])
 plt.show()

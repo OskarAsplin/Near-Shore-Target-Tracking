@@ -9,18 +9,18 @@ import track_initiation
 
 
 # Global constants
-clutter_density = 1e-4
+clutter_density = 2e-5
 radar_range = 1000
 
 # Initialized target
-num_ships = 2
+num_ships = 1
 x0_1 = np.array([100, 4, 0, 5])
 x0_2 = np.array([-100, -4, 0, -5])
 x0 = [x0_1, x0_2]
 
 # Time for simulation
 dt = 1
-t_end = 30
+t_end = 150
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -36,7 +36,7 @@ F, Q = tracking.DWNAModel.model(dt, q)
 
 #PDA constants
 P_G = 0.99
-P_D = 0.5
+P_D = 0.9
 
 # -----------------------------------------------
 
@@ -58,8 +58,8 @@ radar = simulation.SquareRadar(radar_range, clutter_density, P_D, R)
 gate = tracking.TrackGate(P_G, v_max)
 target_model = tracking.DWNAModel(q)
 
-initiation_type = 1   # 0: MofN     else: IPDA
-if initiation_type == 0:
+initiation_type = 0   # 0: MofN     else: IPDA
+if initiation_type == 1:
     PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
     M_of_N = track_initiation.MOfNInitiation(M_req, N_test, PDAF_tracker, gate)
     track_termination = tracking.TrackTerminatorMofN(N_terminate)
@@ -92,8 +92,8 @@ for k, timestamp in enumerate(time):
         print(k)
 
 # Plot
-fig, ax = visualization.plot_measurements(measurements_all)
-# fig, ax = visualization.setup_plot(None)
+# fig, ax = visualization.plot_measurements(measurements_all)
+fig, ax = visualization.setup_plot(None)
 for ship in range(num_ships):
     # ax.plot(x_true[ship, 2, 0:100], x_true[ship, 0, 0:100], 'k', label='True trajectory '+str(ship+1))
     ax.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
@@ -105,5 +105,63 @@ ax.set_xlabel('East[m]')
 ax.set_ylabel('North[m]')
 ax.set_title('Track position with sample rate: 1/s')
 ax.legend()
+
+# Error for estimates (One ship)
+error_arr = []
+for track_id, state_list in track_manager.track_file.items():
+    # states = np.array([est.est_posterior for est in state_list])
+    error_dic = dict()
+    for est in state_list:
+        t = est.timestamp
+        dist = trajectory_tools.dist(x_true[0, 2, t], x_true[0, 0, t], est.est_posterior[2], est.est_posterior[0])
+        error_dic[t] = dist
+    error_arr.append(error_dic)
+
+
+# Plot
+fig, ax = visualization.setup_plot(None)
+for dic in error_arr:
+    list_IPDA = sorted(dic.items())
+    xIPDA, yIPDA = zip(*list_IPDA)
+    plt.plot(xIPDA, yIPDA)
+ax.set_title('RMSE of 200 runs of 30 scans')
+ax.set_xlabel('Scan number')
+ax.set_ylabel('Distance from real target [m]')
+# ax.legend()
+for axis in [ax.xaxis, ax.yaxis]:
+    axis.set_major_locator(ticker.MaxNLocator(integer=True))
+c1 = 15
+c2 = 25
+plt.plot((0, t_end), (c1, c1), 'k--')
+plt.plot((0, t_end), (c2, c2), 'k--')
+# plt.ylim([0, maxValue])
+# plt.xlim([1, maxKey])
+# plt.show()
+
+
+# Existence
+exist_arr = []
+for track_id, state_list in track_manager.track_file.items():
+    # states = np.array([est.est_posterior for est in state_list])
+    exist_dic = dict()
+    for est in state_list:
+        t = est.timestamp
+        exist_dic[t] = est.exist_posterior
+    exist_arr.append(exist_dic)
+
+# Plot
+fig, ax = visualization.setup_plot(None)
+for dic in exist_arr:
+    list_IPDA = sorted(dic.items())
+    xIPDA, yIPDA = zip(*list_IPDA)
+    plt.plot(xIPDA, yIPDA)
+ax.set_title('Existence for confirmed tracks')
+ax.set_xlabel('Scan number')
+ax.set_ylabel('Probability')
+# ax.legend()
+# for axis in [ax.xaxis, ax.yaxis]:
+#     axis.set_major_locator(ticker.MaxNLocator(integer=True))
+
+
 
 plt.show()

@@ -9,7 +9,7 @@ import track_initiation
 
 
 # Global constants
-clutter_density = 1e-5
+clutter_density = 2e-5
 radar_range = 1000
 
 # Initialized target
@@ -45,11 +45,11 @@ P_D = 0.9
 p11 = 0.98          # Survival probability
 p21 = 0             # Probability of birth
 P_Markov = np.array([[p11, 1 - p11], [p21, 1 - p21]])
-initiate_thresh = 0.90
+initiate_thresh = 0.995
 terminate_thresh = 0.10
 # MofN
 N_test = 6
-M_req = 4
+M_req = 5
 N_terminate = 3
 
 # Set up tracking system
@@ -142,8 +142,10 @@ ax.set_title('True detected tracks out of 500')
 ax.set_xlabel('Scans needed')
 ax.set_ylabel('Detected tracks')
 ax.legend()
+#ax.grid()
 for axis in [ax.xaxis, ax.yaxis]:
     axis.set_major_locator(ticker.MaxNLocator(integer=True))
-plt.xlim([1, max_key])
+#plt.xlim([1, 20])
+plt.ylim([0, 500])
 plt.show()
 

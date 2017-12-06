@@ -9,7 +9,7 @@ import track_initiation
 
 
 # Global constants
-clutter_density = 1e-5
+clutter_density = 2e-5
 radar_range = 1000
 
 # Initialized target
@@ -70,8 +70,9 @@ for k, t in enumerate(time):
 
 # Run true detected tracks demo
 errors_IPDA = dict()
-num_runs = 200
+num_runs = 10000
 num_scans = K
+c2 = 50
 for run in range(num_runs):
     # Run tracking
     IPDAF_tracker = tracking.IPDAFTracker(P_D, target_model, gate, P_Markov, gate.gamma)
@@ -88,7 +89,7 @@ for run in range(num_runs):
             states = np.array([est.est_posterior for est in state_list])
             for ship in range(num_ships):
                 dist = trajectory_tools.dist(x_true[ship, 2, k], x_true[ship, 0, k], states[-1, 2], states[-1, 0])
-                if dist < 50:
+                if dist < c2:
                     if k+1 in errors_IPDA:
                         errors_IPDA[k + 1].append(dist)
                     else:
@@ -96,7 +97,7 @@ for run in range(num_runs):
 
     # Print time for debugging purposes
     if run % 50 == 0:
-        print(run)
+        print("%.1f" % (100 * run / num_runs), "% done")
 
 for scan in errors_IPDA:
     errors_IPDA[scan] = sum(errors_IPDA[scan]) / len(errors_IPDA[scan])
@@ -106,11 +107,13 @@ maxKey = max(errors_IPDA.keys())
 
 list_IPDA = sorted(errors_IPDA.items())
 xIPDA, yIPDA = zip(*list_IPDA)
+print("scan numbers: ", xIPDA)
+print("Distances: ", yIPDA)
 
 # Plot
 fig, ax = visualization.setup_plot(None)
 plt.plot(xIPDA, yIPDA, label='IPDA')
-ax.set_title('RMSE of 200 runs of 30 scans')
+ax.set_title('RMSE of 10 000 runs of 30 scans')
 ax.set_xlabel('Scan number')
 ax.set_ylabel('Distance from real target [m]')
 ax.legend()
