@@ -20,7 +20,7 @@ x0 = [x0_1, x0_2]
 
 # Time for simulation
 dt = 1
-t_end = 10
+t_end = 6
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -82,8 +82,12 @@ false_IPDA_arr = []
 true_MofN_arr = []
 false_MofN_arr = []
 init_values = [0.995, 0.98, 0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.51]
-M_values = [8, 7, 6, 6, 5, 4, 4, 3, 3]
-N_values = [8, 7, 6, 7, 6, 5, 6, 5, 6]
+# M_values = [8, 7, 6, 6, 5, 4, 4, 3, 3]
+# N_values = [8, 7, 6, 7, 6, 5, 6, 5, 6]
+# M_values = [6, 5, 4, 4, 3, 3]
+# N_values = [6, 6, 5, 6, 5, 6]
+M_values = [4, 3, 3, 2, 2]
+N_values = [4, 3, 4, 2, 3]
 num_IPDA_tests = len(init_values)
 num_MofN_tests = len(M_values)
 for method in range(2):
@@ -91,6 +95,7 @@ for method in range(2):
     for para_test in range(num_IPDA_tests if method == 0 else num_MofN_tests):
         init_it += 1
         if method == 0:
+            break
             initiate_thresh = init_values[init_it]
         else:
             M_req = M_values[init_it]

@@ -17,6 +17,11 @@ def dist(x1, y1, x2, y2):
     return np.sqrt((x1-x2)**2+(y1-y2)**2)
 
 
+def find_nearest(array, value):
+    idx = (np.abs(array - value)).argmin()
+    return idx, array[idx]
+
+
 class TrajectoryChange(object):
     def randomize_direction(self, state, varTheta=0.1):
         rho, theta = cart2pol(state[1], state[3])

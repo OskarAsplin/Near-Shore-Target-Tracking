@@ -17,7 +17,7 @@ def plot_measurements(measurements_all, ax=None, cmap=get_cmap('Blues')):
     interval = (time-time[0])/(1.*time[-1]-time[0])
     for index, timestamp in enumerate(time):
         color = cmap(interval[index])
-        [ax.plot(z.value[1], z.value[0], 'o', color=color) for z in measurements_all[index]]
+        [ax.plot(z.value[1], z.value[0], 'o',markeredgewidth=0.5, markeredgecolor="black", color=color) for z in measurements_all[index]]
     return fig, ax
 
 

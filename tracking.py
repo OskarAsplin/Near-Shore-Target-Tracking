@@ -109,7 +109,7 @@ class TrackGate(object):
             H = measurement.measurement_mapping
             R = measurement.covariance
             estimate.z_hat = H.dot(estimate.est_prior)
-            estimate.S = H.dot(estimate.cov_prior).dot(H.T)+R
+            estimate.S = H.dot(estimate.cov_prior).dot(H.T) + R
             v_ik = z - estimate.z_hat
             if v_ik.T.dot(np.linalg.inv(estimate.S)).dot(v_ik) < self.gamma:
                 estimate.store_measurement(measurement)
@@ -205,7 +205,6 @@ class IPDAFTracker(PDAFTracker):
         n_measurements = len(estimate.measurements)
         P_D = self.detection_probability
         P_G = self.gate_method.gate_probability
-        V_k = np.pi * np.sqrt(np.linalg.det(self.gamma * estimate.S))
         sum_pdf = 0
         estimate.exist_prior = self.P_Markov[0, 0] * estimate.exist_prior + self.P_Markov[1, 0] * (1 - estimate.exist_prior)
         z_all = np.array([measurement.value for measurement in estimate.measurements]).T
@@ -214,6 +213,7 @@ class IPDAFTracker(PDAFTracker):
         if n_measurements == 0:
             delta_k = P_D*P_G
         else:
+            V_k = np.pi * np.sqrt(np.linalg.det(self.gamma * estimate.S))
             m_k_hat = n_measurements - P_D*P_G*estimate.exist_prior
             delta_k = P_D*P_G - P_D*V_k / m_k_hat * sum_pdf
         estimate.exist_posterior = (1-delta_k)/(1-delta_k*estimate.exist_prior)*estimate.exist_prior

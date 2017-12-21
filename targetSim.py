@@ -10,17 +10,17 @@ import track_initiation
 
 # Global constants
 clutter_density = 2e-5
-radar_range = 1000
+radar_range = 400
 
 # Initialized target
-num_ships = 1
+num_ships = 2
 x0_1 = np.array([100, 4, 0, 5])
 x0_2 = np.array([-100, -4, 0, -5])
 x0 = [x0_1, x0_2]
 
 # Time for simulation
 dt = 1
-t_end = 150
+t_end = 20
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -53,13 +53,13 @@ M_req = 4
 N_terminate = 3
 
 # Set up tracking system
-v_max = 10/dt
+v_max = 10*dt
 radar = simulation.SquareRadar(radar_range, clutter_density, P_D, R)
 gate = tracking.TrackGate(P_G, v_max)
 target_model = tracking.DWNAModel(q)
 
-initiation_type = 0   # 0: MofN     else: IPDA
-if initiation_type == 1:
+initiation_type = 1   # 0: MofN     else: IPDA
+if initiation_type == 0:
     PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
     M_of_N = track_initiation.MOfNInitiation(M_req, N_test, PDAF_tracker, gate)
     track_termination = tracking.TrackTerminatorMofN(N_terminate)
@@ -91,20 +91,51 @@ for k, timestamp in enumerate(time):
     if k % 10 == 0:
         print(k)
 
+# ------------------------------------------------------------------------------
+
 # Plot
 # fig, ax = visualization.plot_measurements(measurements_all)
-fig, ax = visualization.setup_plot(None)
+# # fig, ax = visualization.setup_plot(None)
+# for ship in range(num_ships):
+#     # ax.plot(x_true[ship, 2, 0:100], x_true[ship, 0, 0:100], 'k', label='True trajectory '+str(ship+1))
+#     ax.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
+#     ax.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
+# visualization.plot_track_pos(track_manager.track_file, ax, 'r')
+# ax.set_xlim(-250, 250)
+# ax.set_ylim(-250, 250)
+# ax.set_xlabel('East[m]')
+# ax.set_ylabel('North[m]')
+# ax.set_title('Track position with sample rate: 1/s')
+# ax.legend()
+
+f, (ax2, ax1) = plt.subplots(1, 2)
+fig, ax1 = visualization.plot_measurements(measurements_all, ax1)
+# fig, ax = visualization.setup_plot(None)
 for ship in range(num_ships):
     # ax.plot(x_true[ship, 2, 0:100], x_true[ship, 0, 0:100], 'k', label='True trajectory '+str(ship+1))
-    ax.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
-    ax.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
-visualization.plot_track_pos(track_manager.track_file, ax, 'r')
-ax.set_xlim(-radar_range, radar_range)
-ax.set_ylim(-radar_range, radar_range)
-ax.set_xlabel('East[m]')
-ax.set_ylabel('North[m]')
-ax.set_title('Track position with sample rate: 1/s')
-ax.legend()
+    ax1.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
+    ax1.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
+visualization.plot_track_pos(track_manager.track_file, ax1, 'r')
+ax1.set_xlim(-250, 250)
+ax1.set_ylim(-250, 250)
+ax1.set_xlabel('East[m]')
+ax1.set_ylabel('North[m]')
+ax1.set_title('Track position with sample rate: 1/s')
+ax1.legend(loc="upper left")
+
+fig, ax2 = visualization.plot_measurements(measurements_all, ax2)
+# fig, ax = visualization.setup_plot(None)
+for ship in range(num_ships):
+    # ax.plot(x_true[ship, 2, 0:100], x_true[ship, 0, 0:100], 'k', label='True trajectory '+str(ship+1))
+    ax2.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
+    ax2.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
+#visualization.plot_track_pos(track_manager.track_file, ax, 'r')
+ax2.set_xlim(-250, 250)
+ax2.set_ylim(-250, 250)
+ax2.set_xlabel('East[m]')
+ax2.set_ylabel('North[m]')
+ax2.set_title('Track position with sample rate: 1/s')
+ax2.legend(loc="upper left")
 
 # Error for estimates (One ship)
 error_arr = []

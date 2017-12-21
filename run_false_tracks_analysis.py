@@ -20,7 +20,7 @@ x0 = [x0_1, x0_2]
 
 # Time for simulation
 dt = 1
-t_end = 500
+t_end = 1000
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -100,14 +100,16 @@ list_MofN = sorted(clutter_MofN.items())
 list_IPDA = sorted(clutter_IPDA.items())
 xMofN, yMofN = zip(*list_MofN)
 xIPDA, yIPDA = zip(*list_IPDA)
-print("Densities: ", xIPDA)
-print("False tracks: ", yIPDA)
+print("Densities IPDA: ", xIPDA)
+print("False tracks IPDA: ", yIPDA)
+print("Densities M of N: ", xMofN)
+print("False tracks M of N: ", yMofN)
 
 # Plot
 fig, ax = visualization.setup_plot(None)
-plt.plot(xMofN, yMofN, '--', label='M of N')
-plt.plot(xIPDA, yIPDA, label='IPDA')
-ax.set_title('False tracks detected over 500 scans')
+plt.semilogy(xMofN, yMofN, '--', label='M of N')
+plt.semilogy(xIPDA, yIPDA, label='IPDA')
+ax.set_title('False tracks detected over 1000 scans')
 ax.set_xlabel('Clutter density')
 ax.set_ylabel('False tracks detected')
 plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
