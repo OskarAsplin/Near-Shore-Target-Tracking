@@ -1,22 +1,22 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import tracking
 import simulation
 import visualization
 import track_initiation
-
 import pickle
+import analysis_real_data
 
 # Load real data -------------------------------------------
 def load_pkl(pkl_file):
     obj = None
     with open(pkl_file, 'rb') as f:
-        obj = pickle.load(f,encoding='latin1')
+        obj = pickle.load(f, encoding='latin1')
     return obj
 
+
 z_file = 'measurements_out.pkl'
-ais_file = 'ais_data_out.pkl'
+ais_file = 'sync_ais_data_out.pkl'
 measurements_all = load_pkl(z_file)
 ais = load_pkl(ais_file)
 
@@ -35,7 +35,6 @@ for mmsi, data in ais.items():
         time1, true_state1 = data
     else:
         time2, true_state2 = data
-
 # Real data loaded -----------------------------------------
 
 # Global constants
@@ -87,38 +86,11 @@ else:
     track_manager = tracking.Manager(IPDAF_tracker, IPDAInitiation, track_termination)
 
 
-
 # Run tracking
 for k, measurements in enumerate(measurements_all_new):
     track_manager.step(measurements)
     if k%10 == 0:
         print(k)
-
-for track_id, state_list in track_manager.track_file.items():
-    states = np.array([est.est_posterior for est in state_list])
-    time_states = np.array([est.timestamp*10 for est in state_list])
-    # for time in time_states:
-    #     print(str("%.2f" % (time/10)))
-
-
-# Calculate speed
-# v_arr = []
-# for i, state in enumerate(true_state2):
-#     if i == 0:
-#         continue
-#     dx = state[2] - true_state2[i - 1, 2]
-#     dy = state[0] - true_state2[i-1, 0]
-#     dt = time2[i] - time2[i-1]
-#     vx = dx/dt
-#     vy = dy / dt
-#     v_arr.append(np.hypot(vx,vy))
-#     print(dt, vx, vy)
-#
-# plt.plot(v_arr)
-
-vx_avg = (true_state2[-1, 0] - true_state2[0, 0])/(time2[-1] - time2[0])
-vy_avg = (true_state2[-1, 2] - true_state2[0, 2])/(time2[-1] - time2[0])
-print(vx_avg, vy_avg)
 
 # ------------------------------------------------------------------------------
 
@@ -134,8 +106,13 @@ ax.set_xlim(-500, 1500)
 ax.set_ylim(-1800, -100)
 ax.set_xlabel('East[m]')
 ax.set_ylabel('North[m]')
-#ax.set_title('Track position with sample rate: 2/s')
 ax.set_title('AIS and radar data')
 ax.legend(loc="upper left")
+
+
+# Run analysis
+analysis_real_data.rmse(track_manager.track_file, true_state2, time2)
+analysis_real_data.roc(P_D, target_model, gate, P_Markov, initiate_thresh, terminate_thresh,
+                       N_terminate, measurements_all_new, true_state2, time2)
 
 plt.show()

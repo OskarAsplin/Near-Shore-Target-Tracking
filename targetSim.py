@@ -6,11 +6,12 @@ import tracking
 import simulation
 import visualization
 import track_initiation
+import analysis_sim
 
 
 # Global constants
 clutter_density = 2e-5
-radar_range = 400
+radar_range = 1000
 
 # Initialized target
 num_ships = 2
@@ -20,7 +21,7 @@ x0 = [x0_1, x0_2]
 
 # Time for simulation
 dt = 1
-t_end = 20
+t_end = 25
 time = np.arange(0, t_end, dt)
 K = len(time)             # Num steps
 
@@ -45,12 +46,15 @@ P_D = 0.9
 p11 = 0.98          # Survival probability
 p21 = 0             # Probability of birth
 P_Markov = np.array([[p11, 1 - p11], [p21, 1 - p21]])
-initiate_thresh = 0.90
+initiate_thresh = 0.95
 terminate_thresh = 0.10
 # MofN
 N_test = 6
 M_req = 4
 N_terminate = 3
+
+c1 = 15
+c2 = 25
 
 # Set up tracking system
 v_max = 10*dt
@@ -58,15 +62,16 @@ radar = simulation.SquareRadar(radar_range, clutter_density, P_D, R)
 gate = tracking.TrackGate(P_G, v_max)
 target_model = tracking.DWNAModel(q)
 
+PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
+M_of_N = track_initiation.MOfNInitiation(M_req, N_test, PDAF_tracker, gate)
+IPDAF_tracker = tracking.IPDAFTracker(P_D, target_model, gate, P_Markov, gate.gamma)
+IPDAInitiation = track_initiation.IPDAInitiation(initiate_thresh, terminate_thresh, IPDAF_tracker, gate)
+
 initiation_type = 1   # 0: MofN     else: IPDA
 if initiation_type == 0:
-    PDAF_tracker = tracking.PDAFTracker(P_D, target_model, gate)
-    M_of_N = track_initiation.MOfNInitiation(M_req, N_test, PDAF_tracker, gate)
     track_termination = tracking.TrackTerminatorMofN(N_terminate)
     track_manager = tracking.Manager(PDAF_tracker, M_of_N, track_termination)
 else:
-    IPDAF_tracker = tracking.IPDAFTracker(P_D, target_model, gate, P_Markov, gate.gamma)
-    IPDAInitiation = track_initiation.IPDAInitiation(initiate_thresh, terminate_thresh, IPDAF_tracker, gate)
     track_termination = tracking.TrackTerminatorIPDA(terminate_thresh)
     track_manager = tracking.Manager(IPDAF_tracker, IPDAInitiation, track_termination)
 
@@ -81,7 +86,7 @@ for k, t in enumerate(time):
             x_true[ship, :, k] = traj_tools.randomize_direction(x_true[ship, :, k]).reshape(4)
 
 
-# Run tracking
+# Run tracking: Test scenario
 measurements_all = []
 for k, timestamp in enumerate(time):
     measurements = radar.generate_measurements([H.dot(x_true[ship, :, k]) for ship in range(num_ships)], timestamp)
@@ -94,105 +99,37 @@ for k, timestamp in enumerate(time):
 # ------------------------------------------------------------------------------
 
 # Plot
-# fig, ax = visualization.plot_measurements(measurements_all)
-# # fig, ax = visualization.setup_plot(None)
-# for ship in range(num_ships):
-#     # ax.plot(x_true[ship, 2, 0:100], x_true[ship, 0, 0:100], 'k', label='True trajectory '+str(ship+1))
-#     ax.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
-#     ax.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
-# visualization.plot_track_pos(track_manager.track_file, ax, 'r')
-# ax.set_xlim(-250, 250)
-# ax.set_ylim(-250, 250)
-# ax.set_xlabel('East[m]')
-# ax.set_ylabel('North[m]')
-# ax.set_title('Track position with sample rate: 1/s')
-# ax.legend()
-
-f, (ax2, ax1) = plt.subplots(1, 2)
-fig, ax1 = visualization.plot_measurements(measurements_all, ax1)
+fig, ax = visualization.plot_measurements(measurements_all)
 # fig, ax = visualization.setup_plot(None)
 for ship in range(num_ships):
     # ax.plot(x_true[ship, 2, 0:100], x_true[ship, 0, 0:100], 'k', label='True trajectory '+str(ship+1))
-    ax1.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
-    ax1.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
-visualization.plot_track_pos(track_manager.track_file, ax1, 'r')
-ax1.set_xlim(-250, 250)
-ax1.set_ylim(-250, 250)
-ax1.set_xlabel('East[m]')
-ax1.set_ylabel('North[m]')
-ax1.set_title('Track position with sample rate: 1/s')
-ax1.legend(loc="upper left")
+    ax.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
+    ax.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
+visualization.plot_track_pos(track_manager.track_file, ax, 'r')
+ax.set_xlim(-radar_range, radar_range)
+ax.set_ylim(-radar_range, radar_range)
+ax.set_xlabel('East[m]')
+ax.set_ylabel('North[m]')
+ax.set_title('Track position with sample rate: 1/s')
+ax.legend()
 
-fig, ax2 = visualization.plot_measurements(measurements_all, ax2)
-# fig, ax = visualization.setup_plot(None)
-for ship in range(num_ships):
-    # ax.plot(x_true[ship, 2, 0:100], x_true[ship, 0, 0:100], 'k', label='True trajectory '+str(ship+1))
-    ax2.plot(x_true[ship, 2, :], x_true[ship, 0, :], 'k', label='True trajectory ' + str(ship + 1))
-    ax2.plot(x_true[ship, 2, 0], x_true[ship, 0, 0], 'ko')
-#visualization.plot_track_pos(track_manager.track_file, ax, 'r')
-ax2.set_xlim(-250, 250)
-ax2.set_ylim(-250, 250)
-ax2.set_xlabel('East[m]')
-ax2.set_ylabel('North[m]')
-ax2.set_title('Track position with sample rate: 1/s')
-ax2.legend(loc="upper left")
+# Analysis on completed test scenario
+# analysis_sim.error_estimates(track_manager.track_file, x_true, t_end, c1, c2)
+# analysis_sim.existence_confirmed_tracks(track_manager.track_file)
+# analysis_sim.dual_plot_sim(measurements_all, num_ships, track_manager.track_file, x_true)
 
-# Error for estimates (One ship)
-error_arr = []
-for track_id, state_list in track_manager.track_file.items():
-    # states = np.array([est.est_posterior for est in state_list])
-    error_dic = dict()
-    for est in state_list:
-        t = est.timestamp
-        dist = trajectory_tools.dist(x_true[0, 2, t], x_true[0, 0, t], est.est_posterior[2], est.est_posterior[0])
-        error_dic[t] = dist
-    error_arr.append(error_dic)
-
-
-# Plot
-fig, ax = visualization.setup_plot(None)
-for dic in error_arr:
-    list_IPDA = sorted(dic.items())
-    xIPDA, yIPDA = zip(*list_IPDA)
-    plt.plot(xIPDA, yIPDA)
-ax.set_title('RMSE of 200 runs of 30 scans')
-ax.set_xlabel('Scan number')
-ax.set_ylabel('Distance from real target [m]')
-# ax.legend()
-for axis in [ax.xaxis, ax.yaxis]:
-    axis.set_major_locator(ticker.MaxNLocator(integer=True))
-c1 = 15
-c2 = 25
-plt.plot((0, t_end), (c1, c1), 'k--')
-plt.plot((0, t_end), (c2, c2), 'k--')
-# plt.ylim([0, maxValue])
-# plt.xlim([1, maxKey])
-# plt.show()
-
-
-# Existence
-exist_arr = []
-for track_id, state_list in track_manager.track_file.items():
-    # states = np.array([est.est_posterior for est in state_list])
-    exist_dic = dict()
-    for est in state_list:
-        t = est.timestamp
-        exist_dic[t] = est.exist_posterior
-    exist_arr.append(exist_dic)
-
-# Plot
-fig, ax = visualization.setup_plot(None)
-for dic in exist_arr:
-    list_IPDA = sorted(dic.items())
-    xIPDA, yIPDA = zip(*list_IPDA)
-    plt.plot(xIPDA, yIPDA)
-ax.set_title('Existence for confirmed tracks')
-ax.set_xlabel('Scan number')
-ax.set_ylabel('Probability')
-# ax.legend()
-# for axis in [ax.xaxis, ax.yaxis]:
-#     axis.set_major_locator(ticker.MaxNLocator(integer=True))
-
-
+# Run analysis
+# analysis_sim.roc(P_D, target_model, gate, P_Markov, initiate_thresh, terminate_thresh,
+#         N_terminate, radar, c2, x_true, H, time)
+# analysis_sim.existence(IPDAF_tracker, IPDAInitiation, track_termination, radar, x_true,
+#                        H, num_ships, time)
+# analysis_sim.false_tracks(P_D, target_model, gate, M_req, N_test, N_terminate, initiate_thresh, terminate_thresh,
+#                  P_Markov, radar_range, R, time)
+# analysis_sim.rmse(P_D, target_model, gate, initiate_thresh, terminate_thresh, P_Markov, time, x_true,
+#                   H, num_ships, radar)
+# analysis_sim.error_distances_plot(IPDAF_tracker, IPDAInitiation, track_termination, x_true, radar, time,
+#                                   H, num_ships, t_end)
+analysis_sim.true_tracks(PDAF_tracker, M_of_N, IPDAF_tracker, IPDAInitiation, N_terminate, terminate_thresh,
+                         time, x_true, num_ships, H, radar, c2)
 
 plt.show()

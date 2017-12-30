@@ -13,10 +13,6 @@ def pol2cart(rho, phi):
     return x, y
 
 
-def dist(x1, y1, x2, y2):
-    return np.sqrt((x1-x2)**2+(y1-y2)**2)
-
-
 def find_nearest(array, value):
     idx = (np.abs(array - value)).argmin()
     return idx, array[idx]
